@@ -1,0 +1,19 @@
+{
+  "name": "twx-arcade",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "tsx core/bot.ts",
+    "test": "tsx scripts/check.ts",
+    "probar": "tsx scripts/probar.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@slack/bolt": "^4.1.0",
+    "dotenv": "^16.4.5",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

@@ -1,0 +1,20 @@
+display_information:
+  name: Twenix Arcade
+  description: El bot del hackathon del offsite
+features:
+  bot_user:
+    display_name: twx
+    always_online: true
+  slash_commands:
+    - command: /twx
+      description: Usa el invento de un equipo, vota o pide ayuda
+      usage_hint: "[equipo] [texto]  ·  ayuda  ·  votar [categoria] [equipo]"
+      should_escape: false
+oauth_config:
+  scopes:
+    bot:
+      - commands
+settings:
+  socket_mode_enabled: true
+  org_deploy_enabled: false
+  token_rotation_enabled: false
