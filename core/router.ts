@@ -4,7 +4,7 @@ import type { Team } from "./loader";
 import { ctxFor } from "./services";
 import { CATEGORIES, results, vote } from "./votes";
 
-export type Reply = { text: string; public: boolean };
+export type Reply = { text: string; public: boolean; image?: string };
 type User = { id: string; name: string };
 
 export async function route(raw: string, user: User, teams: Team[]): Promise<Reply> {
@@ -31,7 +31,7 @@ export async function route(raw: string, user: User, teams: Team[]): Promise<Rep
   try {
     const out = await withTimeout(team.mod.handle({ user: user.id, userName: user.name, text }, ctxFor(team.name)));
     validateOutput(out);
-    return { public: true, text: `${header}\n\n${out.text}` };
+    return { public: true, text: `${header}\n\n${out.text}`, image: out.image };
   } catch (e) {
     console.error(`[${team.name}]`, e);
     return { public: true, text: `${header}\n💥 *${team.name}* ha petado: ${e instanceof Error ? e.message : String(e)}` };

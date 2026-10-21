@@ -9,3 +9,4 @@ import { route } from "../core/router";
 const teams = await loadTeams();
 const reply = await route(process.argv.slice(2).join(" "), { id: "U_LOCAL", name: "yo" }, teams);
 console.log(`\n[${reply.public ? "público" : "solo para ti"}]\n${reply.text}\n`);
+if (reply.image) console.log(`🖼️  Imagen (ábrela en el navegador para verla):\n${reply.image}\n`);

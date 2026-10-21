@@ -37,9 +37,12 @@ export default {
     // ctx.store.get/set → libreta para guardar cosas entre usos
     // ctx.fakeData    → empresas y alumnos inventados
     return { text: "lo que contesta el bot" };
+    // o con imagen:  return { text: "…", image: "https://…png" }
   },
 } satisfies Module;
 ```
+
+**¿Queréis imágenes?** Devolved también `image` con una URL pública `https://…`. Hay un ejemplo completo de memes en `teams/_memes/index.ts` (usa memegen.link: Claude elige plantilla y textos, el código valida y construye la URL). Podéis partir de él: `cp -r teams/_memes teams/vuestro-equipo`.
 
 ## Probar en vuestro portátil (sin Slack)
 
@@ -70,6 +73,8 @@ Un voto por categoría (se puede cambiar). Votar a vuestro propio equipo está f
 
 ## Ideas para arrancar (o no)
 
+- Un generador de memes de la vida en Twenix (mirad `teams/_memes`).
+- Un trivial de idiomas con puntos, rachas y ranking de la sala.
 - Un traductor de mensajes de Slack a "idioma de RRHH".
 - Un generador de excusas para no hacer el standup.
 - Un oráculo que predice qué alumno de prueba dejará el curso.

@@ -13,9 +13,11 @@ export type Input = {
   text: string;     // lo que ha escrito después del nombre del equipo
 };
 
-/** Lo que tiene que devolver tu equipo: un texto (admite formato de Slack: *negrita*, _cursiva_, emojis) */
+/** Lo que tiene que devolver tu equipo: un texto (admite formato de Slack: *negrita*, _cursiva_, emojis)
+ *  y, si quieres, una imagen (una URL pública https://… — por ejemplo un meme de memegen.link) */
 export type Output = {
   text: string;
+  image?: string;
 };
 
 /** Lo que el bot te presta. No puedes usar nada más. */
@@ -56,6 +58,10 @@ export function validateOutput(out: unknown): asserts out is Output {
   if (!o || typeof o !== "object" || typeof o.text !== "string") throw new Error("handle tiene que devolver `{ text: \"...\" }`");
   if (!o.text.trim()) throw new Error("handle ha devuelto un texto vacío");
   if (o.text.length > MAX_TEXT) throw new Error(`el texto es demasiado largo (${o.text.length} > ${MAX_TEXT} caracteres)`);
+  if (o.image !== undefined) {
+    if (typeof o.image !== "string" || !/^https:\/\/\S+$/.test(o.image)) throw new Error("`image` tiene que ser una URL que empiece por https://");
+    if (o.image.length > 2_000) throw new Error("la URL de la imagen es demasiado larga (máx. 2000 caracteres)");
+  }
 }
 
 export function withTimeout<T>(p: Promise<T> | T, ms = TIMEOUT_MS): Promise<T> {
