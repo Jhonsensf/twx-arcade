@@ -9,10 +9,10 @@ Tenéis **50 minutos**. Gana lo que **funciona**, no lo más impresionante.
 2. **Podéis usar cualquier API pública que no pida clave ni registro** (el tiempo, chistes, GIFs, Wikipedia…), además de lo que os da el bot: Claude, una libreta y datos inventados de Twenix.
 3. **Nada de datos reales** de Twenix ni de clientes, y **nada de claves propias** en el código (el repo es público).
 4. **No instaléis paquetes nuevos de npm.** Si de verdad necesitáis uno, pedídselo al árbitro.
-5. **Responde en menos de 20 segundos.**
-6. **Solo tocáis vuestra carpeta** `teams/<vuestro-equipo>/`.
+5. **Solo tocáis vuestra carpeta** `teams/<vuestro-equipo>/`.
+6. **Declarad vuestros miembros** (ver Paso 1). No se puede votar al propio equipo.
 7. **Primera versión publicada antes del minuto 30.** Si no está publicado al congelar, no se vota.
-8. **Humor blanco:** nada de burlarse de personas concretas.
+8. **Nada sobre personas concretas.**
 
 ## Paso 1 · Preparar (5 min)
 
@@ -28,6 +28,14 @@ cp -r teams/ejemplo teams/<nombre>    # vuestra carpeta (minúsculas, números y
 
 El `<nombre>` será vuestro comando en Slack: `/twx <nombre>`.
 
+**Miembros (obligatorio):** cada persona del equipo escribe `/twx yo` en Slack y os pasa su ID (tipo `U0123ABC`). Ponedlos en vuestro `index.ts`:
+
+```ts
+miembros: ["U0123ABC", "U0456DEF", "U0789GHI"],
+```
+
+Sin esto, la prueba automática no os deja publicar, y el bot no os dejará votaros a vosotros mismos.
+
 ¿Queréis partir de algo más completo? Mirad `teams/_memes` (genera memes con imagen) para ver cómo se usan Claude, la libreta y las imágenes juntos. Inspiraos, pero no lo presentéis tal cual.
 
 ## Paso 2 · Programar
@@ -39,6 +47,7 @@ import type { Module } from "../../core/contract";
 
 export default {
   description: "Una línea que explica qué hace (sale en /twx ayuda)",
+  miembros: ["U0123ABC", "U0456DEF"],   // vuestros IDs (/twx yo)
 
   async handle(input, ctx) {
     // input.text       → lo que ha escrito la persona después de /twx <nombre>
@@ -110,7 +119,7 @@ Repartíos: una persona programa, otra prueba ideas y frases, otra vigila Slack 
   /twx votar absurdo <equipo>
   /twx votar ia <equipo>
   ```
-  Un voto por categoría (se puede cambiar). Votaros a vosotros mismos está feo.
+  Un voto por categoría (se puede cambiar). No se puede votar al propio equipo ni a `ejemplo`.
 
 ## Si algo falla
 
@@ -118,6 +127,7 @@ Repartíos: una persona programa, otra prueba ideas y frases, otra vigila Slack 
 |---|---|
 | `❌ <nombre>: …` en `npm test` | El mensaje dice qué falla. Lo más típico: no devolver `{ text: "…" }`. |
 | "Claude no está configurado" | Falta la clave en `.env`. |
-| "ha tardado más de 20 s" | Una API lenta o demasiadas llamadas a Claude. Simplificad. |
+| "ha tardado más de 60 s" | Una API lenta o demasiadas llamadas a Claude. Simplificad. |
+| `falta miembros` / "no parecen IDs de Slack" | Poned vuestros IDs (los da `/twx yo`), no vuestros nombres. |
 | En Slack sale 💥 vuestro equipo | Vuestro código ha fallado con ese texto. Probad lo mismo con `npm run probar` para ver el error. |
 | No veis vuestro cambio en Slack | ¿Hicisteis merge? ¿La prueba salió verde? Esperad 2 minutos. |

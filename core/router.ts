@@ -1,5 +1,5 @@
 // Decide qué hacer con cada "/twx ...". No sabe nada de Slack: recibe texto y devuelve texto.
-import { validateOutput, withTimeout } from "./contract";
+import { NO_VOTABLES, validateOutput, withTimeout } from "./contract";
 import type { Team } from "./loader";
 import { ctxFor } from "./services";
 import { CATEGORIES, results, vote } from "./votes";
@@ -15,6 +15,8 @@ export async function route(raw: string, user: User, teams: Team[]): Promise<Rep
   if (cmd === "" || cmd === "ayuda" || cmd === "help" || cmd === "equipos") return { public: false, text: help(teams) };
 
   if (cmd === "votar") return { public: false, text: doVote(user, rest, teams) };
+
+  if (cmd === "yo") return { public: false, text: `Tu ID de Slack es \`${user.id}\`. Añádelo a \`miembros\` en el archivo de tu equipo.` };
 
   if (cmd === "resultados") {
     const admin = process.env.ADMIN_USER_ID;
@@ -50,6 +52,7 @@ function help(teams: Team[]): string {
     "",
     "*Cómo se usa:* `/twx <equipo> <lo que quieras>`",
     `*Cómo se vota:* \`/twx votar <categoría> <equipo>\` — categorías: ${cats}`,
+    "*Tu ID de Slack:* `/twx yo`",
   ].join("\n");
 }
 
@@ -58,6 +61,8 @@ function doVote(user: User, args: string[], teams: Team[]): string {
   if (!CATEGORIES[cat]) return `Categoría no válida. Usa una de estas: ${Object.keys(CATEGORIES).join(" · ")}\nEjemplo: \`/twx votar absurdo piratas\``;
   const team = teams.find((t) => t.name === teamName && t.mod);
   if (!team) return `No hay ningún equipo funcionando que se llame *${teamName || "?"}*. Mira la lista con \`/twx ayuda\`.`;
+  if (NO_VOTABLES.includes(team.name)) return `*${team.name}* es solo un ejemplo y no participa en la votación.`;
+  if (team.mod?.miembros?.includes(user.id)) return `No puedes votar a tu propio equipo (*${team.name}*).`;
   vote(user.id, cat, team.name);
   return `🗳️ Voto guardado: ${CATEGORIES[cat]} → *${team.name}*. (Si vuelves a votar en esta categoría, se cambia.)`;
 }

@@ -1,7 +1,7 @@
 // LA PRUEBA AUTOMÁTICA. Se ejecuta en cada cambio (npm test).
 // Para cada equipo: ¿carga?, ¿cumple el contrato?, ¿responde a tiempo con un texto válido?
 // No llama a Claude de verdad: usa una respuesta simulada (gratis y rápido).
-import { type Ctx, validateOutput, withTimeout } from "../core/contract";
+import { type Ctx, NO_VOTABLES, validateOutput, withTimeout } from "../core/contract";
 import { fakeData } from "../core/fake-data";
 import { loadTeams } from "../core/loader";
 
@@ -21,6 +21,12 @@ let failed = 0;
 for (const t of teams) {
   try {
     if (!t.mod) throw new Error(t.error);
+    if (!NO_VOTABLES.includes(t.name)) {
+      const m = t.mod.miembros;
+      if (!m || !m.length) throw new Error("falta `miembros` con los IDs de Slack del equipo (cada uno lo ve con `/twx yo`)");
+      const malos = m.filter((id) => !/^[UW][A-Z0-9]{6,}$/.test(id));
+      if (malos.length) throw new Error(`estos miembros no parecen IDs de Slack: ${malos.join(", ")} (son tipo "U0123ABC"; usad /twx yo)`);
+    }
     for (const text of inputs) {
       const out = await withTimeout(t.mod.handle({ user: "U_TEST", userName: "test", text }, fakeCtx()));
       validateOutput(out);

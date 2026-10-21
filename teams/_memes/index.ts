@@ -58,6 +58,9 @@ function corto(s: unknown, max = 80): string {
 export default {
   description: "Genera memes · /twx memes <tema> · /twx memes otra vez · /twx memes historial",
 
+  // IDs de Slack de vuestro equipo (cada uno lo ve con /twx yo). Obligatorio para publicar.
+  miembros: [],
+
   async handle(input, ctx) {
     const texto = input.text.trim();
     const claveUltimo = `ultimo:${input.user}`;
