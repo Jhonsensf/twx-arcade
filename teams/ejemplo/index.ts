@@ -5,6 +5,10 @@ import type { Module } from "../../core/contract";
 export default {
   description: "Te contesta como un profe de idiomas muy dramático",
 
+  // IDs de Slack de vuestro equipo (cada uno lo ve escribiendo /twx yo).
+  // Obligatorio para publicar. No podréis votar a vuestro propio equipo.
+  miembros: [],
+
   async handle(input, ctx) {
     // 1) La libreta: cuántas veces se ha usado este comando
     const usos = (ctx.store.get<number>("usos") ?? 0) + 1;

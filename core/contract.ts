@@ -36,14 +36,17 @@ export type Ctx = {
 export type Module = {
   /** Una línea que explica qué hace tu invento (sale en /twx ayuda) */
   description: string;
+  /** IDs de Slack de los miembros del equipo (cada uno lo ve con `/twx yo`). No pueden votar a su propio equipo. */
+  miembros?: string[];
   /** La función que se ejecuta cada vez que alguien usa tu comando */
   handle: (input: Input, ctx: Ctx) => Promise<Output> | Output;
 };
 
 // ── Reglas que comprueba el bot ──────────────────────────────
-export const TIMEOUT_MS = 20_000;
+export const TIMEOUT_MS = 60_000;
 export const MAX_TEXT = 3_000;
-export const RESERVED = ["ayuda", "help", "votar", "resultados", "equipos"];
+export const RESERVED = ["ayuda", "help", "votar", "resultados", "equipos", "yo"];
+export const NO_VOTABLES = ["ejemplo"];
 export const NAME_RE = /^[a-z0-9][a-z0-9-]{1,29}$/;
 
 export function validateModule(mod: unknown): asserts mod is Module {
@@ -51,6 +54,8 @@ export function validateModule(mod: unknown): asserts mod is Module {
   if (!m || typeof m !== "object") throw new Error("index.ts tiene que hacer `export default { description, handle }`");
   if (typeof m.description !== "string" || !m.description.trim()) throw new Error("falta `description` (un texto)");
   if (typeof m.handle !== "function") throw new Error("falta `handle` (una función)");
+  if (m.miembros !== undefined && (!Array.isArray(m.miembros) || m.miembros.some((x) => typeof x !== "string")))
+    throw new Error('`miembros` tiene que ser una lista de IDs de Slack, p. ej. ["U0123ABC", "U0456DEF"]');
 }
 
 export function validateOutput(out: unknown): asserts out is Output {
