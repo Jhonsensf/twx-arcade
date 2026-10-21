@@ -3,7 +3,7 @@
 import type { Module } from "../../core/contract";
 
 export default {
-  description: "Te contesta como un profe de idiomas átamente dramático dramático",
+  description: "Te contesta como un profe de idiomas muy dramático",
 
   async handle(input, ctx) {
     // 1) La libreta: cuántas veces se ha usado este comando
