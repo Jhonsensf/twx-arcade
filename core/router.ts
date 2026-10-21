@@ -12,7 +12,9 @@ export async function route(raw: string, user: User, teams: Team[]): Promise<Rep
   const cmd = first.toLowerCase();
   const text = rest.join(" ");
 
-  if (cmd === "" || cmd === "ayuda" || cmd === "help" || cmd === "equipos") return { public: false, text: help(teams) };
+  if (cmd === "" || cmd === "ayuda" || cmd === "help") return { public: false, text: help(teams) };
+
+  if (cmd === "equipos") return { public: true, text: equipos(teams) };
 
   if (cmd === "votar") return { public: false, text: doVote(user, rest, teams) };
 
@@ -52,8 +54,19 @@ function help(teams: Team[]): string {
     "",
     "*Cómo se usa:* `/twx <equipo> <lo que quieras>`",
     `*Cómo se vota:* \`/twx votar <categoría> <equipo>\` — categorías: ${cats}`,
-    "*Tu ID de Slack:* `/twx yo`",
+    "*Tu ID de Slack:* `/twx yo`  ·  *Lista de equipos en el canal:* `/twx equipos`",
   ].join("\n");
+}
+
+function equipos(teams: Team[]): string {
+  const participantes = teams.filter((t) => !NO_VOTABLES.includes(t.name));
+  if (!participantes.length) return "*🕹️ Equipos*\n_Todavía no hay equipos publicados._";
+  const lines = participantes.map((t) => {
+    if (!t.mod) return `• ~${t.name}~ 💥 ${t.error}`;
+    const miembros = (t.mod.miembros ?? []).map((id) => `<@${id}>`).join(" ");
+    return `• *${t.name}* — ${t.mod.description}${miembros ? ` · ${miembros}` : ""}`;
+  });
+  return [`*🕹️ Equipos (${participantes.length})*`, "", ...lines, "", "Pruébalos con `/twx <equipo> <texto>`"].join("\n");
 }
 
 function doVote(user: User, args: string[], teams: Team[]): string {
