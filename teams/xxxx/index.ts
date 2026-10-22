@@ -5,8 +5,9 @@
 //   pero si te vota todo el mundo, 0 (demasiado obvia).
 import type { Ctx, Input, Module, Output } from "../../core/contract";
 
-const CARTAS = 84;
-const MANO = 4;
+// Las manos son fijas: 21 grupos de 4 cartas, cada uno con una imagen en fila (manos/mano_XX.jpg)
+// para que no haya que hacer scroll. En cada partida a cada jugador le toca una mano al azar.
+const MANOS: number[][] = [[60, 7, 59, 69], [8, 47, 45, 12], [75, 51, 39, 70], [46, 68, 27, 62], [34, 9, 73, 49], [56, 38, 55, 78], [4, 84, 18, 50], [79, 81, 3, 28], [40, 43, 24, 64], [20, 67, 10, 30], [42, 19, 35, 36], [6, 22, 5, 83], [33, 48, 25, 52], [76, 23, 17, 26], [80, 21, 61, 32], [44, 82, 53, 2], [58, 13, 37, 15], [11, 1, 31, 57], [63, 71, 74, 54], [72, 77, 29, 14], [66, 65, 41, 16]];
 const MIN_JUGADORES = 3;
 const MAX_JUGADORES = 12;
 // DIXIT_RAPIDO=1 acorta los tiempos para probar en local.
@@ -15,8 +16,9 @@ const SEG = { unirse: 60, elegir: 60, votar: 60 };
 const TICK_MS = 5_000 * ESCALA;
 const LETRAS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-const img = (n: number) =>
-  `https://raw.githubusercontent.com/Jhonsensf/twx-arcade/main/teams/xxxx/cartas/carta_${String(n).padStart(2, "0")}.jpg`;
+const BASE = "https://raw.githubusercontent.com/Jhonsensf/twx-arcade/main/teams/xxxx";
+const img = (n: number) => `${BASE}/cartas/carta_${String(n).padStart(2, "0")}.jpg`;
+const imgMano = (m: number) => `${BASE}/manos/mano_${String(m + 1).padStart(2, "0")}.jpg`;
 
 type Fase = "unirse" | "elegir" | "votar" | "fin";
 type Partida = {
@@ -25,8 +27,9 @@ type Partida = {
   creador: string;
   fase: Fase;
   fin: number; // cuándo acaba la fase actual (ms)
-  mazo: number[];
+  mazo: number[]; // manos (índices de MANOS) que quedan por repartir
   manos: Record<string, number[]>; // jugador → sus cartas
+  mano: Record<string, number>; // jugador → índice de su mano en MANOS
   nombres: Record<string, string>;
   historia?: string;
   elegidas: Record<string, number>; // jugador → carta elegida
@@ -128,7 +131,7 @@ function msgMano(p: Partida, user: string): Output {
   return {
     private: true,
     text: titulo,
-    images: mano.map((c, i) => ({ url: img(c), title: `Carta ${i + 1}` })),
+    images: [imgMano(p.mano[user])],
     buttons: p.fase === "elegir" ? mano.map((c, i) => ({ label: `Elegir ${i + 1}`, value: `elegir:${p.id}:${c}` })) : undefined,
   };
 }
@@ -148,8 +151,9 @@ async function empezar(input: Input, ctx: Ctx): Promise<Output> {
     creador: input.user,
     fase: "unirse",
     fin: Date.now() + SEG.unirse * 1000 * ESCALA,
-    mazo: barajar(Array.from({ length: CARTAS }, (_, i) => i + 1)),
+    mazo: barajar(MANOS.map((_, i) => i)),
     manos: {},
+    mano: {},
     nombres: {},
     elegidas: {},
     orden: [],
@@ -176,7 +180,9 @@ function pedirCartas(input: Input, ctx: Ctx, id?: string): Output {
   if (p.fase !== "unirse") return privado("⌛ La inscripción ya está cerrada. ¡A la próxima!");
   if (jugadores(p).length >= MAX_JUGADORES) return privado(`🙅 Ya somos ${MAX_JUGADORES}, la mesa está llena.`);
 
-  p.manos[input.user] = p.mazo.splice(0, MANO);
+  const m = p.mazo.pop()!;
+  p.mano[input.user] = m;
+  p.manos[input.user] = MANOS[m];
   p.nombres[input.user] = input.userName;
   guardar(ctx, p);
   if (p.msg) enSegundoPlano(() => ctx.update(p.canal, p.msg!, msgUnirse(p)));
