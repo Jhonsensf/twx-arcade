@@ -1,13 +1,13 @@
 // Decide qué hacer con cada "/twx ...". No sabe nada de Slack: recibe texto y devuelve texto.
-import { NO_VOTABLES, validateOutput, withTimeout } from "./contract";
+import { NO_VOTABLES, type Output, validateOutput, withTimeout } from "./contract";
 import type { Team } from "./loader";
 import { ctxFor } from "./services";
 import { CATEGORIES, results, vote } from "./votes";
 
-export type Reply = { text: string; public: boolean; image?: string };
+export type Reply = Pick<Output, "text" | "image" | "images" | "buttons" | "replace"> & { public: boolean; team?: string };
 type User = { id: string; name: string };
 
-export async function route(raw: string, user: User, teams: Team[]): Promise<Reply> {
+export async function route(raw: string, user: User, teams: Team[], channel?: string): Promise<Reply> {
   const [first = "", ...rest] = raw.trim().split(/\s+/);
   const cmd = first.toLowerCase();
   const text = rest.join(" ");
@@ -33,12 +33,26 @@ export async function route(raw: string, user: User, teams: Team[]): Promise<Rep
   if (!team.mod) return { public: true, text: `${header}\n💥 *${team.name}* no ha arrancado: ${team.error}` };
 
   try {
-    const out = await withTimeout(team.mod.handle({ user: user.id, userName: user.name, text }, ctxFor(team.name)));
+    const out = await withTimeout(team.mod.handle({ user: user.id, userName: user.name, text, channel }, ctxFor(team.name)));
     validateOutput(out);
-    return { public: true, text: `${header}\n\n${out.text}`, image: out.image };
+    return { ...out, public: !out.private, replace: false, team: team.name, text: `${header}\n\n${out.text}` };
   } catch (e) {
     console.error(`[${team.name}]`, e);
     return { public: true, text: `${header}\n💥 *${team.name}* ha petado: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+/** Alguien ha pulsado un botón de un equipo: se llama a su `handle` con el `value` del botón. */
+export async function routeAction(teamName: string, value: string, user: User, teams: Team[], channel?: string): Promise<Reply> {
+  const team = teams.find((t) => t.name === teamName && t.mod);
+  if (!team?.mod) return { public: false, text: `🤔 El equipo *${teamName}* ya no está disponible.` };
+  try {
+    const out = await withTimeout(team.mod.handle({ user: user.id, userName: user.name, text: value, channel, action: true }, ctxFor(team.name)));
+    validateOutput(out);
+    return { ...out, public: !out.private, team: team.name };
+  } catch (e) {
+    console.error(`[${team.name}]`, e);
+    return { public: false, text: `💥 *${team.name}* ha petado: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
 
