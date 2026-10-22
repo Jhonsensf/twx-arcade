@@ -21,11 +21,10 @@ const ETAPAS = [
 // Los GIF los genera sprites/generar.ts y se sirven desde GitHub (solo tras el merge a main).
 // Subid VERSION cada vez que regeneréis los sprites: Slack y GitHub cachean las imágenes.
 const SPRITES_URL = "https://raw.githubusercontent.com/Jhonsensf/twx-arcade/main/teams/las-super-nenas/sprites";
-const VERSION = 1;
-const ESTADOS_SPRITE = ["reposo", "regular", "quejica", "agonizando", "comer", "jugar", "banar", "dormir", "turno"];
+const VERSION = 2;
+const ESTADOS_SPRITE = ["reposo", "regular", "quejica", "agonizando", "comer", "jugar", "banar", "dormir", "acariciar", "turno"];
 export const SPRITES = [
-  ...["cria", "adolescente", "adulta", "leyenda"].flatMap((e) => ESTADOS_SPRITE.map((s) => `${e}-${s}`)),
-  "huevo-reposo",
+  ...["huevo", "cria", "adolescente", "adulta", "leyenda"].flatMap((e) => ESTADOS_SPRITE.map((s) => `${e}-${s}`)),
   "huevo-eclosion",
   "muerta",
 ];
@@ -183,12 +182,12 @@ function avisos(m: Mascota) {
     .join("\n");
 }
 
-const SPRITE_DE_CUIDADO: Record<Cuidado, string | null> = {
+const SPRITE_DE_CUIDADO: Record<Cuidado, string> = {
   alimentar: "comer",
   jugar: "jugar",
   banar: "banar",
   dormir: "dormir",
-  acariciar: null,
+  acariciar: "acariciar",
 };
 
 const SPRITE_DE_ANIMO: Record<string, string> = { feliz: "reposo", regular: "regular", quejica: "quejica", agonizando: "agonizando" };
@@ -373,7 +372,7 @@ export default {
     const situacion = `${input.userName} ${VERBOS[cuidado]}.` + (sobrealimentada ? " Estabas ya a reventar." : "");
     const frase = await voz(ctx, m, situacion, sobrealimentada ? "Estoy a reventar… 🤢" : "¡Gracias! 💖");
     const eclosiona = etapaAntes.slug === "huevo" && etapaAhora !== etapaAntes;
-    const image = eclosiona ? sprite("huevo", "eclosion", m.nombre) : imagen(m, SPRITE_DE_CUIDADO[cuidado] ?? undefined);
+    const image = eclosiona ? sprite("huevo", "eclosion", m.nombre) : imagen(m, SPRITE_DE_CUIDADO[cuidado]);
     return tarjeta(m, ahora, frase, subida, image);
   },
 } satisfies Module;
