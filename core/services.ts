@@ -1,9 +1,11 @@
 // Lo que el bot "presta" a cada equipo: Claude y una libreta.
 import Anthropic from "@anthropic-ai/sdk";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type Ctx, validateOutput } from "./contract";
 import { fakeData } from "./fake-data";
+import { fileUrl, hostImage } from "./web";
 
 // ── Claude ───────────────────────────────────────────────────
 const MODEL = process.env.CLAUDE_MODEL || "claude-haiku-4-5";
@@ -36,15 +38,37 @@ export function makeStore(namespace: string): Ctx["store"] {
     get: <T>(key: string) => db[namespace]?.[key] as T | undefined,
     set: (key, value) => {
       (db[namespace] ??= {})[key] = value;
-      try {
-        mkdirSync(DATA_DIR, { recursive: true });
-        writeFileSync(FILE, JSON.stringify(db, null, 2));
-      } catch (e) {
-        console.error("No he podido guardar la libreta:", e);
-      }
+      saveSoon();
     },
   };
 }
+
+// Guardar en disco sin bloquear el bot: como mucho una escritura cada 300 ms, aunque haya muchos clics a la vez.
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
+let saving: Promise<void> = Promise.resolve();
+function saveSoon() {
+  saveTimer ??= setTimeout(() => {
+    saveTimer = undefined;
+    const json = JSON.stringify(db);
+    saving = saving
+      .then(() => mkdirSync(DATA_DIR, { recursive: true }))
+      .then(() => writeFile(FILE, json))
+      .catch((e) => console.error("No he podido guardar la libreta:", e));
+  }, 300);
+  saveTimer.unref?.();
+}
+// Si el proceso termina con una escritura pendiente (p. ej. npm run probar), se guarda antes de salir.
+process.on("beforeExit", () => {
+  if (!saveTimer) return;
+  clearTimeout(saveTimer);
+  saveTimer = undefined;
+  try {
+    mkdirSync(DATA_DIR, { recursive: true });
+    writeFileSync(FILE, JSON.stringify(db));
+  } catch (e) {
+    console.error("No he podido guardar la libreta:", e);
+  }
+});
 
 // ── Publicar y editar mensajes por iniciativa propia ─────────
 // En Slack lo conecta bot.ts. Sin Slack (npm run probar / npm test) se escribe en la consola.
@@ -73,6 +97,8 @@ export function ctxFor(team: string): Ctx {
     claude,
     store: makeStore(team),
     fakeData,
+    fileUrl: (path) => fileUrl(team, path),
+    hostImage,
     post: async (channel, out) => {
       validateOutput(out);
       return poster.post(team, channel, out);
