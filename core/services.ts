@@ -2,7 +2,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Ctx } from "./contract";
+import { type Ctx, validateOutput } from "./contract";
 import { fakeData } from "./fake-data";
 
 // ── Claude ───────────────────────────────────────────────────
@@ -46,6 +46,40 @@ export function makeStore(namespace: string): Ctx["store"] {
   };
 }
 
+// ── Publicar y editar mensajes por iniciativa propia ─────────
+// En Slack lo conecta bot.ts. Sin Slack (npm run probar / npm test) se escribe en la consola.
+type Out = Parameters<Ctx["post"]>[1];
+export type Poster = {
+  post: (team: string, channel: string, out: Out) => Promise<string>;
+  update: (team: string, channel: string, ts: string, out: Out) => Promise<void>;
+};
+let poster: Poster = {
+  post: async (_team, channel, out) => {
+    console.log(`\n[post en ${channel}]\n${out.text}${describe(out)}`);
+    return String(Date.now());
+  },
+  update: async (_team, channel, ts, out) => console.log(`\n[edita ${ts} en ${channel}]\n${out.text}${describe(out)}`),
+};
+export function setPoster(p: Poster) {
+  poster = p;
+}
+function describe(out: Out): string {
+  const imgs = [...(out.image ? [out.image] : []), ...(out.images ?? [])].map((i) => (typeof i === "string" ? i : `${i.title ?? ""} ${i.url}`));
+  return [...imgs.map((i) => `\n🖼️  ${i}`), ...(out.buttons ?? []).map((b) => `\n🔘 [${b.label}] → ${b.value}`)].join("");
+}
+
 export function ctxFor(team: string): Ctx {
-  return { claude, store: makeStore(team), fakeData };
+  return {
+    claude,
+    store: makeStore(team),
+    fakeData,
+    post: async (channel, out) => {
+      validateOutput(out);
+      return poster.post(team, channel, out);
+    },
+    update: async (channel, ts, out) => {
+      validateOutput(out);
+      await poster.update(team, channel, ts, out);
+    },
+  };
 }

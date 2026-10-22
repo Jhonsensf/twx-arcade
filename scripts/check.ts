@@ -11,6 +11,8 @@ function fakeCtx(): Ctx {
     claude: async (prompt) => `[respuesta simulada de Claude a: ${prompt.slice(0, 40)}]`,
     store: { get: <T>(k: string) => mem[k] as T | undefined, set: (k, v) => void (mem[k] = v) },
     fakeData: structuredClone(fakeData),
+    post: async (_channel, out) => (validateOutput(out), "1"),
+    update: async (_channel, _ts, out) => validateOutput(out),
   };
 }
 
@@ -28,7 +30,7 @@ for (const t of teams) {
       if (malos.length) throw new Error(`estos miembros no parecen IDs de Slack: ${malos.join(", ")} (son tipo "U0123ABC"; usad /twx yo)`);
     }
     for (const text of inputs) {
-      const out = await withTimeout(t.mod.handle({ user: "U_TEST", userName: "test", text }, fakeCtx()));
+      const out = await withTimeout(t.mod.handle({ user: "U_TEST", userName: "test", text, channel: "C_TEST" }, fakeCtx()));
       validateOutput(out);
     }
     console.log(`✅ ${t.name}`);
