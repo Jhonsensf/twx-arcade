@@ -7,7 +7,7 @@ export default {
 
   // IDs de Slack de vuestro equipo (cada uno lo ve escribiendo /twx yo).
   // Obligatorio para publicar. No podréis votar a vuestro propio equipo.
-  miembros: [],
+  miembros: ["U02J3M9RM36", "U04GU04432B", "U029XCGFCN7"],
 
   async handle(input, ctx) {
     // 1) La libreta: cuántas veces se ha usado este comando
