@@ -48,6 +48,10 @@ export type Ctx = {
   post: (channel: string, out: Output) => Promise<string>;
   /** Edita un mensaje publicado con `post` (p. ej. una cuenta atrás) */
   update: (channel: string, ts: string, out: Output) => Promise<void>;
+  /** URL pública y rápida de una imagen de tu carpeta (p. ej. "fotos/gato.jpg"). undefined si el bot no tiene dirección pública */
+  fileUrl: (path: string) => string | undefined;
+  /** Publica una imagen generada en memoria y devuelve su URL. undefined si el bot no tiene dirección pública */
+  hostImage: (data: Uint8Array, type: "image/png" | "image/jpeg") => string | undefined;
 };
 
 export type Module = {

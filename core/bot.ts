@@ -5,6 +5,7 @@ import { ACTION_PREFIX, toMessage, withImageLinks } from "./blocks";
 import { loadTeams } from "./loader";
 import { type Reply, route, routeAction } from "./router";
 import { setPoster } from "./services";
+import { startWeb } from "./web";
 
 for (const key of ["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN"]) {
   if (!process.env[key]) {
@@ -53,10 +54,14 @@ app.command("/twx", async ({ command, ack, respond }) => {
 // Botones de los equipos: action_id = "twx:<equipo>:<n>", value = lo que se pasa a su handle.
 app.action<BlockAction<ButtonAction>>(new RegExp(`^${ACTION_PREFIX}`), async ({ ack, body, action, respond }) => {
   await ack();
+  const t0 = Date.now();
   const team = action.action_id.slice(ACTION_PREFIX.length).split(":")[0];
   const user = { id: body.user.id, name: body.user.username ?? body.user.name ?? body.user.id };
   const reply = await routeAction(team, action.value ?? "", user, teams, body.channel?.id);
+  const t1 = Date.now();
   await send(respond, reply, !!reply.replace);
+  const t2 = Date.now();
+  if (t2 - t0 > 1500) console.warn(`🐢 Clic lento en ${team} (${action.value}): equipo ${t1 - t0} ms, respuesta a Slack ${t2 - t1} ms`);
 });
 
 // Los equipos pueden publicar y editar mensajes cuando quieran (ctx.post / ctx.update).
@@ -83,5 +88,6 @@ setPoster({
   },
 });
 
+startWeb();
 await app.start();
 console.log("🕹️  Twenix Arcade conectado a Slack");

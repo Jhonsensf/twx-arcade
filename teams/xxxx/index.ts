@@ -4,6 +4,7 @@
 //   se revelan barajadas y se vota en secreto con botones. Puntos: 1 por cada voto a tu carta,
 //   pero si te vota todo el mundo, 0 (demasiado obvia).
 import type { Ctx, Input, Module, Output } from "../../core/contract";
+import { componerMesa } from "./mesa";
 
 // Las manos son fijas: 21 grupos de 4 cartas, cada uno con una imagen en fila (manos/mano_XX.jpg)
 // para que no haya que hacer scroll. En cada partida a cada jugador le toca una mano al azar.
@@ -16,9 +17,11 @@ const SEG = { unirse: 60, elegir: 60, votar: 60 };
 const TICK_MS = 5_000 * ESCALA;
 const LETRAS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-const BASE = "https://raw.githubusercontent.com/Jhonsensf/twx-arcade/main/teams/xxxx";
-const img = (n: number) => `${BASE}/cartas/carta_${String(n).padStart(2, "0")}.jpg`;
-const imgMano = (m: number) => `${BASE}/manos/mano_${String(m + 1).padStart(2, "0")}.jpg`;
+// Las imágenes las sirve el propio bot (rápido); si no tiene dirección pública, GitHub.
+const GITHUB = "https://raw.githubusercontent.com/Jhonsensf/twx-arcade/main/teams/xxxx";
+const url = (ctx: Ctx, path: string) => ctx.fileUrl(path) ?? `${GITHUB}/${path}`;
+const img = (ctx: Ctx, n: number) => url(ctx, `cartas/carta_${String(n).padStart(2, "0")}.jpg`);
+const imgMano = (ctx: Ctx, m: number) => url(ctx, `manos/mano_${String(m + 1).padStart(2, "0")}.jpg`);
 
 type Fase = "unirse" | "elegir" | "votar" | "fin";
 type Partida = {
@@ -83,6 +86,33 @@ function cuentaAtras(ctx: Ctx, canal: string, id: string, fase: Fase, pintar: (p
   relojes.set(id, reloj);
 }
 
+// Con muchos clics a la vez, el mensaje público se edita como mucho una vez por segundo
+// (en vez de una vez por clic), para no saturar a Slack.
+const pendientes = new Set<string>();
+function refrescar(ctx: Ctx, p: Partida, fase: Fase, pintar: (p: Partida) => Output) {
+  const k = `${p.canal}:${p.id}:${fase}`;
+  if (pendientes.has(k)) return;
+  pendientes.add(k);
+  const { canal, id } = p;
+  setTimeout(() => {
+    pendientes.delete(k);
+    const q = activa(ctx, canal, id, fase);
+    if (q?.msg) enSegundoPlano(() => ctx.update(q.canal, q.msg!, pintar(q)));
+  }, 1000 * ESCALA).unref?.();
+}
+
+// Las cartas a votar, unidas en una sola imagen. Si no se puede (bot sin dirección pública), una por una.
+async function imagenesMesa(ctx: Ctx, p: Partida): Promise<Output["images"]> {
+  try {
+    const png = await componerMesa(p.orden.map((u) => p.elegidas[u]));
+    const u = ctx.hostImage(png, "image/png");
+    if (u) return [u];
+  } catch (e) {
+    console.error("[xxxx] mesa:", e);
+  }
+  return p.orden.map((u, i) => ({ url: img(ctx, p.elegidas[u]), title: LETRAS[i] }));
+}
+
 // ── Mensajes públicos de cada fase ────────────────────────────
 const msgUnirse = (p: Partida): Output => ({
   text: [
@@ -122,7 +152,7 @@ const msgVotar = (p: Partida): Output => ({
 });
 
 // ── Mensajes privados ────────────────────────────────────────
-function msgMano(p: Partida, user: string): Output {
+function msgMano(ctx: Ctx, p: Partida, user: string): Output {
   const mano = p.manos[user];
   const titulo =
     p.fase === "unirse"
@@ -131,7 +161,7 @@ function msgMano(p: Partida, user: string): Output {
   return {
     private: true,
     text: titulo,
-    images: [imgMano(p.mano[user])],
+    images: [imgMano(ctx, p.mano[user])],
     buttons: p.fase === "elegir" ? mano.map((c, i) => ({ label: `Elegir ${i + 1}`, value: `elegir:${p.id}:${c}` })) : undefined,
   };
 }
@@ -176,7 +206,7 @@ async function empezar(input: Input, ctx: Ctx): Promise<Output> {
 function pedirCartas(input: Input, ctx: Ctx, id?: string): Output {
   const p = leer(ctx, input.channel);
   if (!p || p.fase === "fin" || (id && p.id !== id)) return privado("No hay ninguna partida abierta en este canal. Empieza una con `/twx xxxx start`.");
-  if (p.manos[input.user]) return msgMano(p, input.user);
+  if (p.manos[input.user]) return msgMano(ctx, p, input.user);
   if (p.fase !== "unirse") return privado("⌛ La inscripción ya está cerrada. ¡A la próxima!");
   if (jugadores(p).length >= MAX_JUGADORES) return privado(`🙅 Ya somos ${MAX_JUGADORES}, la mesa está llena.`);
 
@@ -185,8 +215,8 @@ function pedirCartas(input: Input, ctx: Ctx, id?: string): Output {
   p.manos[input.user] = MANOS[m];
   p.nombres[input.user] = input.userName;
   guardar(ctx, p);
-  if (p.msg) enSegundoPlano(() => ctx.update(p.canal, p.msg!, msgUnirse(p)));
-  return msgMano(p, input.user);
+  refrescar(ctx, p, "unirse", msgUnirse);
+  return msgMano(ctx, p, input.user);
 }
 
 async function cerrarInscripcion(ctx: Ctx, canal: string, id: string) {
@@ -223,9 +253,9 @@ function elegir(input: Input, ctx: Ctx, id: string, carta: number): Output {
 
   p.elegidas[input.user] = carta;
   guardar(ctx, p);
-  if (p.msg) enSegundoPlano(() => ctx.update(p.canal, p.msg!, msgHistoria(p)));
+  refrescar(ctx, p, "elegir", msgHistoria);
   if (Object.keys(p.elegidas).length === jugadores(p).length) enSegundoPlano(() => revelar(ctx, p.canal, id));
-  return { private: true, replace: true, text: `✅ Has elegido esta carta para «${p.historia}». ¡Ahora a esperar la votación!`, images: [img(carta)] };
+  return { private: true, replace: true, text: `✅ Has elegido esta carta para «${p.historia}». ¡Ahora a esperar la votación!`, images: [img(ctx, carta)] };
 }
 
 async function revelar(ctx: Ctx, canal: string, id: string) {
@@ -248,7 +278,7 @@ async function revelar(ctx: Ctx, canal: string, id: string) {
 
   await ctx.post(p.canal, {
     text: `🃏 *Las cartas elegidas para «${p.historia}»*`,
-    images: p.orden.map((u, i) => ({ url: img(p.elegidas[u]), title: LETRAS[i] })),
+    images: await imagenesMesa(ctx, p),
     buttons: p.orden.map((_, i) => ({ label: `Votar ${LETRAS[i]}`, value: `votar:${id}:${i}` })),
   });
   p.msg = await ctx.post(p.canal, msgVotar(p));
@@ -265,7 +295,7 @@ function votar(input: Input, ctx: Ctx, id: string, i: number): Output {
 
   p.votos[input.user] = i;
   guardar(ctx, p);
-  if (p.msg) enSegundoPlano(() => ctx.update(p.canal, p.msg!, msgVotar(p)));
+  refrescar(ctx, p, "votar", msgVotar);
   if (Object.keys(p.votos).length === jugadores(p).length) enSegundoPlano(() => resultados(ctx, p.canal, id));
   return privado(`🗳️ Voto secreto guardado: *${LETRAS[i]}*. Puedes cambiarlo mientras dure la votación.`);
 }

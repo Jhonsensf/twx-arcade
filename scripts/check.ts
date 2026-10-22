@@ -11,6 +11,8 @@ function fakeCtx(): Ctx {
     claude: async (prompt) => `[respuesta simulada de Claude a: ${prompt.slice(0, 40)}]`,
     store: { get: <T>(k: string) => mem[k] as T | undefined, set: (k, v) => void (mem[k] = v) },
     fakeData: structuredClone(fakeData),
+    fileUrl: () => undefined,
+    hostImage: () => undefined,
     post: async (_channel, out) => (validateOutput(out), "1"),
     update: async (_channel, _ts, out) => validateOutput(out),
   };
