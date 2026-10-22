@@ -11,11 +11,23 @@ const UMBRAL_AVISO = 30;
 const TIMEOUT_CLAUDE_MS = 20_000;
 
 const ETAPAS = [
-  { desde: 50, nombre: "leyenda", emoji: "👑" },
-  { desde: 25, nombre: "adulta", emoji: "🦄" },
-  { desde: 10, nombre: "adolescente rebelde", emoji: "😼" },
-  { desde: 3, nombre: "cría", emoji: "🐣" },
-  { desde: 0, nombre: "huevo", emoji: "🥚" },
+  { desde: 50, nombre: "leyenda con capa", slug: "leyenda", emoji: "🦸" },
+  { desde: 25, nombre: "adulta en maceta", slug: "adulta", emoji: "👔" },
+  { desde: 10, nombre: "planta rebelde con corbata", slug: "adolescente", emoji: "🪴" },
+  { desde: 3, nombre: "brote", slug: "cria", emoji: "🌱" },
+  { desde: 0, nombre: "semilla", slug: "huevo", emoji: "🫘" },
+];
+
+// Los GIF los genera sprites/generar.ts y se sirven desde GitHub (solo tras el merge a main).
+// Subid VERSION cada vez que regeneréis los sprites: Slack y GitHub cachean las imágenes.
+const SPRITES_URL = "https://raw.githubusercontent.com/Jhonsensf/twx-arcade/main/teams/las-super-nenas/sprites";
+const VERSION = 1;
+const ESTADOS_SPRITE = ["reposo", "regular", "quejica", "agonizando", "comer", "jugar", "banar", "dormir", "turno"];
+export const SPRITES = [
+  ...["cria", "adolescente", "adulta", "leyenda"].flatMap((e) => ESTADOS_SPRITE.map((s) => `${e}-${s}`)),
+  "huevo-reposo",
+  "huevo-eclosion",
+  "muerta",
 ];
 
 const NECESIDADES = [
@@ -171,12 +183,28 @@ function avisos(m: Mascota) {
     .join("\n");
 }
 
-function avatar(m: Mascota) {
-  const seed = m.viva && animo(m) !== "agonizando" ? m.nombre : `${m.nombre}-rip`;
-  return `https://api.dicebear.com/9.x/fun-emoji/png?seed=${encodeURIComponent(seed)}`;
+const SPRITE_DE_CUIDADO: Record<Cuidado, string | null> = {
+  alimentar: "comer",
+  jugar: "jugar",
+  banar: "banar",
+  dormir: "dormir",
+  acariciar: null,
+};
+
+const SPRITE_DE_ANIMO: Record<string, string> = { feliz: "reposo", regular: "regular", quejica: "quejica", agonizando: "agonizando" };
+
+// Si no hay GIF para esa combinación: el reposo de la etapa y, si tampoco, un avatar de DiceBear
+function sprite(etapaSlug: string, estado: string, nombre: string) {
+  const archivo = [`${etapaSlug}-${estado}`, estado, `${etapaSlug}-reposo`].find((s) => SPRITES.includes(s));
+  if (archivo) return `${SPRITES_URL}/${archivo}.gif?v=${VERSION}`;
+  return `https://api.dicebear.com/9.x/fun-emoji/png?seed=${encodeURIComponent(nombre)}`;
 }
 
-function tarjeta(m: Mascota, ahora: number, frase: string, extra = "") {
+function imagen(m: Mascota, estado = SPRITE_DE_ANIMO[animo(m)]) {
+  return sprite(etapa(m.cuidados).slug, estado, m.nombre);
+}
+
+function tarjeta(m: Mascota, ahora: number, frase: string, extra = "", image = imagen(m)) {
   const e = etapa(m.cuidados);
   const lineas = [
     `${e.emoji} *${m.nombre}* (${m.especie}) · ${e.nombre} · ${minutosDesde(m.nacidaEn, ahora)} min`,
@@ -185,7 +213,7 @@ function tarjeta(m: Mascota, ahora: number, frase: string, extra = "") {
     avisos(m),
     extra,
   ].filter(Boolean);
-  return { text: lineas.join("\n"), image: avatar(m) };
+  return { text: lineas.join("\n"), image };
 }
 
 // ── Voz (Claude) ─────────────────────────────────────────────
@@ -255,7 +283,7 @@ async function morir(ctx: Ctx, m: Mascota, causa: Necesidad, ahora: number) {
   ctx.store.set("mascota", m);
   return {
     text: `💀 *${m.nombre}* (${m.especie}) ha muerto por falta de ${causa} tras ${tumba.vivio} min.\n_${m.epitafio}_\n\nAdopta otra con \`${COMANDO} adoptar\``,
-    image: avatar(m),
+    image: imagen(m, "muerta"),
   };
 }
 
@@ -277,6 +305,7 @@ function cementerio(ctx: Ctx) {
     text:
       "🪦 *Cementerio*\n" +
       tumbas.map((t) => `• *${t.nombre}* (${t.especie}) · ${t.vivio} min · falta de ${t.causa}\n   _${t.epitafio}_`).join("\n"),
+    image: sprite("muerta", "muerta", tumbas[0].nombre),
   };
 }
 
@@ -309,14 +338,17 @@ export default {
       if (m?.viva) return tarjeta(m, ahora, `¡Ya tengo dueños! Cuidadme a mí primero.`);
       m = await nacer(ctx, resto.join(" ").slice(0, 25), ahora);
       ctx.store.set("mascota", m);
-      const frase = await voz(ctx, m, `acabas de nacer y ${input.userName} te ha adoptado.`, "¡Hola, mundo! Ya estoy aquí 🥚✨");
+      const frase = await voz(ctx, m, `acabas de nacer y ${input.userName} te ha adoptado.`, "¡Hola, mundo! Ya estoy aquí 🌱✨");
       return tarjeta(m, ahora, frase, `🎉 ¡Ha nacido! Cuidadla con \`${COMANDO} ayuda\``);
     }
 
-    if (!m) return { text: `🥚 Todavía no hay mascota. Adopta una con \`${COMANDO} adoptar [nombre]\`` };
+    if (!m) return { text: `🫘 Todavía no hay mascota. Adopta una con \`${COMANDO} adoptar [nombre]\`` };
 
     if (!m.viva) {
-      return { text: `🪦 _${m.epitafio}_\n\n${m.nombre} ya no está entre nosotros. Adopta otra con \`${COMANDO} adoptar\`` };
+      return {
+        text: `🪦 _${m.epitafio}_\n\n${m.nombre} ya no está entre nosotros. Adopta otra con \`${COMANDO} adoptar\``,
+        image: imagen(m, "muerta"),
+      };
     }
 
     if (accion === "estado") return tarjeta(m, ahora, `Me siento ${animo(m)}.`);
@@ -327,7 +359,7 @@ export default {
     }
 
     if (cuidado !== "acariciar" && m.ultimoCuidador === input.user) {
-      return tarjeta(m, ahora, azar(FRASES_TURNO));
+      return tarjeta(m, ahora, azar(FRASES_TURNO), "", imagen(m, "turno"));
     }
 
     const etapaAntes = etapa(m.cuidados);
@@ -340,6 +372,8 @@ export default {
     const subida = etapaAhora !== etapaAntes ? `🌟 *¡${m.nombre} ha evolucionado a ${etapaAhora.nombre}!* ${etapaAhora.emoji}` : "";
     const situacion = `${input.userName} ${VERBOS[cuidado]}.` + (sobrealimentada ? " Estabas ya a reventar." : "");
     const frase = await voz(ctx, m, situacion, sobrealimentada ? "Estoy a reventar… 🤢" : "¡Gracias! 💖");
-    return tarjeta(m, ahora, frase, subida);
+    const eclosiona = etapaAntes.slug === "huevo" && etapaAhora !== etapaAntes;
+    const image = eclosiona ? sprite("huevo", "eclosion", m.nombre) : imagen(m, SPRITE_DE_CUIDADO[cuidado] ?? undefined);
+    return tarjeta(m, ahora, frase, subida, image);
   },
 } satisfies Module;
