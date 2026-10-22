@@ -10,14 +10,27 @@ import type { FakeData } from "./fake-data";
 export type Input = {
   user: string;     // ID de Slack de quien lo usa (p. ej. "U0123ABC")
   userName: string; // nombre de usuario de Slack
-  text: string;     // lo que ha escrito después del nombre del equipo
+  text: string;     // lo que ha escrito después del nombre del equipo (o el `value` del botón pulsado)
+  channel?: string; // canal donde se ha usado (para ctx.post)
+  action?: boolean; // true si viene de pulsar un botón en vez de escribir
 };
+
+/** Un botón bajo el mensaje. Al pulsarlo, se llama a tu `handle` con `text = value` y `action = true`. */
+export type Button = { label: string; value: string; style?: "primary" | "danger" };
 
 /** Lo que tiene que devolver tu equipo: un texto (admite formato de Slack: *negrita*, _cursiva_, emojis)
  *  y, si quieres, una imagen (una URL pública https://… — por ejemplo un meme de memegen.link) */
 export type Output = {
   text: string;
   image?: string;
+  /** Varias imágenes en el mismo mensaje (con título opcional encima de cada una) */
+  images?: (string | { url: string; title?: string })[];
+  /** true → solo lo ve quien ha usado el comando o pulsado el botón */
+  private?: boolean;
+  /** Botones bajo el mensaje */
+  buttons?: Button[];
+  /** Solo al responder a un botón: sustituye el mensaje donde estaba el botón en vez de enviar uno nuevo */
+  replace?: boolean;
 };
 
 /** Lo que el bot te presta. No puedes usar nada más. */
@@ -31,6 +44,10 @@ export type Ctx = {
   };
   /** Datos inventados de Twenix: empresas y alumnos de mentira */
   fakeData: FakeData;
+  /** Publica un mensaje en un canal cuando quieras (p. ej. desde un temporizador). Devuelve su id (`ts`) */
+  post: (channel: string, out: Output) => Promise<string>;
+  /** Edita un mensaje publicado con `post` (p. ej. una cuenta atrás) */
+  update: (channel: string, ts: string, out: Output) => Promise<void>;
 };
 
 export type Module = {
@@ -66,6 +83,19 @@ export function validateOutput(out: unknown): asserts out is Output {
   if (o.image !== undefined) {
     if (typeof o.image !== "string" || !/^https:\/\/\S+$/.test(o.image)) throw new Error("`image` tiene que ser una URL que empiece por https://");
     if (o.image.length > 2_000) throw new Error("la URL de la imagen es demasiado larga (máx. 2000 caracteres)");
+  }
+  if (o.images !== undefined) {
+    if (!Array.isArray(o.images) || o.images.length > 20) throw new Error("`images` tiene que ser una lista de 20 imágenes como mucho");
+    for (const img of o.images) {
+      const url = typeof img === "string" ? img : img?.url;
+      if (typeof url !== "string" || !/^https:\/\/\S+$/.test(url) || url.length > 2_000) throw new Error("cada imagen de `images` tiene que ser una URL https://");
+    }
+  }
+  if (o.buttons !== undefined) {
+    if (!Array.isArray(o.buttons) || o.buttons.length > 25) throw new Error("`buttons` tiene que ser una lista de 25 botones como mucho");
+    for (const b of o.buttons)
+      if (typeof b?.label !== "string" || !b.label.trim() || b.label.length > 75 || typeof b.value !== "string" || b.value.length > 2_000)
+        throw new Error("cada botón necesita `label` (máx. 75 caracteres) y `value` (un texto)");
   }
 }
 
