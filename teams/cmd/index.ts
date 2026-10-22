@@ -2,7 +2,8 @@
 // Uso en Slack:
 //   /twx cmd <cualquier temática>   → titulares reales (informática, alimentación, finanzas…)
 //   /twx cmd <temática> guason      → te enseño un titular… ¿verdad o bulo?
-//   /twx cmd verdad | bulo          → respondes al reto
+//   /twx cmd verdad | bulo          → votas en el reto abierto (puede votar cualquiera)
+//   /twx cmd resolver               → se desvela el reto y se reparten los puntos
 //   /twx cmd puntos                 → tu marcador
 import type { Ctx, Module } from "../../core/contract";
 
@@ -50,7 +51,12 @@ function feedPara(texto: string): Feed {
 }
 
 type Noticia = { titulo: string; medio: string; link: string; fecha: number };
-type Reto = { titulo: string; esVerdad: boolean; link?: string; medio?: string; tema: string };
+// Hay un único reto abierto para todo el bot: el bot no nos dice el canal
+type Reto = {
+  titulo: string; esVerdad: boolean; link?: string; medio?: string; tema: string;
+  votos: Record<string, boolean>;   // ID de Slack → true si dice "verdad"
+  nombres: Record<string, string>;  // ID de Slack → nombre, para el resultado
+};
 type Marcador = { aciertos: number; fallos: number; racha: number };
 
 const decode = (s: string) =>
@@ -81,7 +87,8 @@ function ayuda(): string {
     "*🗞️ Buscador de noticias* — elige temática y modo:",
     "• `/twx cmd <temática>` → titulares reales de lo que quieras: `informatica`, `alimentacion`, `finanzas`, `formula 1`… (modo serio)",
     "• `/twx cmd <temática> guason` → te enseño un titular… ¿es *verdad* o un *bulo*?",
-    "• `/twx cmd verdad` / `/twx cmd bulo` → respondes al reto",
+    "• `/twx cmd verdad` / `/twx cmd bulo` → votas en el reto abierto (puede votar cualquiera)",
+    "• `/twx cmd resolver` → se desvela y se reparten los puntos",
     "• `/twx cmd puntos` → tu marcador",
   ].join("\n");
 }
@@ -110,43 +117,63 @@ async function inventarBulo(feed: Feed, reales: Noticia[], ctx: Ctx): Promise<st
   return titulo && !titulo.startsWith("(Claude no está configurado") ? titulo : null;
 }
 
-async function modoGuason(input: { user: string }, feed: Feed, ctx: Ctx): Promise<string> {
+async function modoGuason(feed: Feed, ctx: Ctx): Promise<string> {
   const reales = await leerNoticias(feed.url);
   if (!reales.length) return `No he encontrado noticias de ${feed.nombre} para jugar 😕`;
 
   let reto: Reto;
   const bulo = Math.random() < 0.5 ? await inventarBulo(feed, reales, ctx) : null;
   if (bulo) {
-    reto = { titulo: bulo, esVerdad: false, tema: feed.nombre };
+    reto = { titulo: bulo, esVerdad: false, tema: feed.nombre, votos: {}, nombres: {} };
   } else {
     const n = azar(reales.slice(0, 15));
-    reto = { titulo: n.titulo, esVerdad: true, link: n.link, medio: n.medio, tema: feed.nombre };
+    reto = { titulo: n.titulo, esVerdad: true, link: n.link, medio: n.medio, tema: feed.nombre, votos: {}, nombres: {} };
   }
-  ctx.store.set(`reto:${input.user}`, reto);
+  ctx.store.set("reto", reto);
 
   return [
     `🃏 *¿Verdad o bulo?* — ${feed.emoji} ${feed.nombre}`,
     `> ${reto.titulo}`,
-    "Responde con `/twx cmd verdad` o `/twx cmd bulo`",
+    "Votad todos con `/twx cmd verdad` o `/twx cmd bulo`, y cuando queráis: `/twx cmd resolver`",
   ].join("\n");
 }
 
-function responder(input: { user: string; userName: string }, dice: boolean, ctx: Ctx): string {
-  const reto = ctx.store.get<Reto>(`reto:${input.user}`);
-  if (!reto) return "No tienes ningún reto pendiente. Empieza uno con `/twx cmd deportes guason` 🃏";
-  ctx.store.set(`reto:${input.user}`, undefined);
+function votar(input: { user: string; userName: string }, dice: boolean, ctx: Ctx): string {
+  const reto = ctx.store.get<Reto>("reto");
+  if (!reto) return "No hay ningún reto abierto. Empieza uno con `/twx cmd deportes guason` 🃏";
+  const cambia = input.user in reto.votos && reto.votos[input.user] !== dice;
+  reto.votos[input.user] = dice;
+  reto.nombres[input.user] = input.userName;
+  ctx.store.set("reto", reto);
+  const total = Object.keys(reto.votos).length;
+  return `📝 ${cambia ? "Cambiado: " : "Anotado: "}${input.userName} vota *${dice ? "verdad" : "bulo"}* · ${total} ${total === 1 ? "voto" : "votos"}. Desvelad con \`/twx cmd resolver\``;
+}
 
-  const m = ctx.store.get<Marcador>(`puntos:${input.user}`) ?? { aciertos: 0, fallos: 0, racha: 0 };
-  const acierto = dice === reto.esVerdad;
-  if (acierto) { m.aciertos++; m.racha++; } else { m.fallos++; m.racha = 0; }
-  ctx.store.set(`puntos:${input.user}`, m);
+function resolver(ctx: Ctx): string {
+  const reto = ctx.store.get<Reto>("reto");
+  if (!reto) return "No hay ningún reto abierto. Empieza uno con `/twx cmd deportes guason` 🃏";
+  ctx.store.set("reto", undefined);
+
+  const aciertan: string[] = [];
+  const fallan: string[] = [];
+  for (const [user, dice] of Object.entries(reto.votos)) {
+    const m = ctx.store.get<Marcador>(`puntos:${user}`) ?? { aciertos: 0, fallos: 0, racha: 0 };
+    const acierto = dice === reto.esVerdad;
+    if (acierto) { m.aciertos++; m.racha++; } else { m.fallos++; m.racha = 0; }
+    ctx.store.set(`puntos:${user}`, m);
+    const nombre = `${reto.nombres[user] ?? user}${acierto && m.racha >= 3 ? ` 🔥${m.racha}` : ""}`;
+    (acierto ? aciertan : fallan).push(nombre);
+  }
 
   const veredicto = reto.esVerdad
     ? `Era *VERDAD* ✅ → <${reto.link}|${reto.titulo}>${reto.medio ? ` _(${reto.medio})_` : ""}`
-    : "Era un *BULO* 🤡, me lo he inventado yo.";
-  const titular = acierto ? `🎉 ¡Bien visto, ${input.userName}!` : `😬 Te la he colado, ${input.userName}.`;
-  const racha = m.racha >= 3 ? ` · 🔥 racha de ${m.racha}` : "";
-  return `${titular}\n${veredicto}\n_Marcador: ${m.aciertos} aciertos · ${m.fallos} fallos${racha}_`;
+    : `Era un *BULO* 🤡, me lo he inventado yo:\n> ${reto.titulo}`;
+  if (!aciertan.length && !fallan.length) return `${veredicto}\n_Nadie había votado_ 🦗`;
+  return [
+    veredicto,
+    `🎉 Aciertan: ${aciertan.length ? aciertan.join(", ") : "nadie"}`,
+    `😬 Se la he colado a: ${fallan.length ? fallan.join(", ") : "nadie"}`,
+  ].join("\n");
 }
 
 export default {
@@ -159,7 +186,9 @@ export default {
     if (!palabras.length) return { text: ayuda() };
 
     if (palabras[0] === "verdad" || palabras[0] === "bulo" || palabras[0] === "falso" || palabras[0] === "mentira")
-      return { text: responder(input, palabras[0] === "verdad", ctx) };
+      return { text: votar(input, palabras[0] === "verdad", ctx) };
+
+    if (palabras[0] === "resolver" || palabras[0] === "desvelar") return { text: resolver(ctx) };
 
     if (palabras[0] === "puntos" || palabras[0] === "marcador") {
       const m = ctx.store.get<Marcador>(`puntos:${input.user}`);
@@ -168,10 +197,12 @@ export default {
 
     const guason = palabras.some((p) => MODO_GUASON.includes(p));
     if (guason && palabras.length === 1) return { text: `Dime de qué temática, p. ej. \`/twx cmd finanzas guason\` 🃏` };
+    if (guason && ctx.store.get<Reto>("reto"))
+      return { text: "Ya hay un reto abierto 🃏 Votad con `/twx cmd verdad` o `/twx cmd bulo`, o cerradlo con `/twx cmd resolver`" };
     const feed = feedPara(input.text.trim());
 
     try {
-      return { text: guason ? await modoGuason(input, feed, ctx) : await modoSerio(feed) };
+      return { text: guason ? await modoGuason(feed, ctx) : await modoSerio(feed) };
     } catch (e) {
       return { text: `No he podido traer las noticias ahora mismo 📡 (${e instanceof Error ? e.message : String(e)})` };
     }
