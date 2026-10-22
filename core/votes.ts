@@ -4,7 +4,6 @@ import { makeStore } from "./services";
 export const CATEGORIES: Record<string, string> = {
   util: "🛠️ Más útil",
   absurdo: "🤡 Más absurdo",
-  ia: "🤖 Mejor uso de IA",
 };
 
 type Votes = Record<string, Record<string, string>>; // categoria -> userId -> equipo
