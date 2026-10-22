@@ -53,20 +53,22 @@ const barra = (p: Partida, total: number) => {
 const jugadores = (p: Partida) => Object.keys(p.manos);
 const menciones = (ids: string[]) => ids.map((u) => `<@${u}>`).join(" ") || "_nadie todavía_";
 
-const leer = (ctx: Ctx) => ctx.store.get<Partida>("partida");
-const guardar = (ctx: Ctx, p: Partida) => ctx.store.set("partida", p);
-const activa = (ctx: Ctx, id: string, fase: Fase) => {
-  const p = leer(ctx);
+// Una partida por canal: cada canal (o grupo privado donde esté el bot) juega la suya.
+const clave = (canal: string) => `partida:${canal}`;
+const leer = (ctx: Ctx, canal?: string) => (canal ? ctx.store.get<Partida>(clave(canal)) : undefined);
+const guardar = (ctx: Ctx, p: Partida) => ctx.store.set(clave(p.canal), p);
+const activa = (ctx: Ctx, canal: string, id: string, fase: Fase) => {
+  const p = leer(ctx, canal);
   return p && p.id === id && p.fase === fase ? p : undefined;
 };
 const enSegundoPlano = (f: () => Promise<unknown>) => void f().catch((e) => console.error("[xxxx]", e));
 
 // ── Cuenta atrás: edita el mensaje de la fase cada pocos segundos y, al llegar a 0, pasa a la siguiente ──
 const relojes = new Map<string, ReturnType<typeof setInterval>>();
-function cuentaAtras(ctx: Ctx, id: string, fase: Fase, pintar: (p: Partida) => Output, alAcabar: () => Promise<void>) {
+function cuentaAtras(ctx: Ctx, canal: string, id: string, fase: Fase, pintar: (p: Partida) => Output, alAcabar: () => Promise<void>) {
   clearInterval(relojes.get(id));
   const reloj = setInterval(() => {
-    const p = activa(ctx, id, fase);
+    const p = activa(ctx, canal, id, fase);
     if (!p) return void clearInterval(reloj);
     if (Date.now() >= p.fin) {
       clearInterval(reloj);
@@ -135,9 +137,9 @@ const privado = (text: string): Output => ({ private: true, text });
 
 // ── Fases ────────────────────────────────────────────────────
 async function empezar(input: Input, ctx: Ctx): Promise<Output> {
-  const actual = leer(ctx);
+  const actual = leer(ctx, input.channel);
   if (actual && actual.fase !== "fin")
-    return privado(`⚠️ Ya hay una partida en marcha en <#${actual.canal}>. Si se ha quedado colgada: \`/twx xxxx parar\`.`);
+    return privado("⚠️ Ya hay una partida en marcha en este canal. Si se ha quedado colgada: `/twx xxxx parar`.");
   if (!input.channel) return privado("No sé en qué canal estamos 🤷");
 
   const p: Partida = {
@@ -163,13 +165,13 @@ async function empezar(input: Input, ctx: Ctx): Promise<Output> {
     return privado("😵 No puedo publicar en este canal. Prueba en un canal público, o invítame con `/invite @twx`.");
   }
   guardar(ctx, p);
-  cuentaAtras(ctx, p.id, "unirse", msgUnirse, () => cerrarInscripcion(ctx, p.id));
+  cuentaAtras(ctx, p.canal, p.id, "unirse", msgUnirse, () => cerrarInscripcion(ctx, p.canal, p.id));
   return privado("🎴 ¡Partida creada! Mira el canal.");
 }
 
 function pedirCartas(input: Input, ctx: Ctx, id?: string): Output {
-  const p = leer(ctx);
-  if (!p || p.fase === "fin" || (id && p.id !== id)) return privado("No hay ninguna partida abierta. Empieza una con `/twx xxxx start`.");
+  const p = leer(ctx, input.channel);
+  if (!p || p.fase === "fin" || (id && p.id !== id)) return privado("No hay ninguna partida abierta en este canal. Empieza una con `/twx xxxx start`.");
   if (p.manos[input.user]) return msgMano(p, input.user);
   if (p.fase !== "unirse") return privado("⌛ La inscripción ya está cerrada. ¡A la próxima!");
   if (jugadores(p).length >= MAX_JUGADORES) return privado(`🙅 Ya somos ${MAX_JUGADORES}, la mesa está llena.`);
@@ -181,8 +183,8 @@ function pedirCartas(input: Input, ctx: Ctx, id?: string): Output {
   return msgMano(p, input.user);
 }
 
-async function cerrarInscripcion(ctx: Ctx, id: string) {
-  const p = activa(ctx, id, "unirse");
+async function cerrarInscripcion(ctx: Ctx, canal: string, id: string) {
+  const p = activa(ctx, canal, id, "unirse");
   if (!p) return;
   if (jugadores(p).length < MIN_JUGADORES) {
     p.fase = "fin";
@@ -196,18 +198,18 @@ async function cerrarInscripcion(ctx: Ctx, id: string) {
   if (p.msg) await ctx.update(p.canal, p.msg, msgUnirseCerrado(p, "🧠 Pensando una historia…"));
 
   const historia = await inventarHistoria(ctx);
-  const q = activa(ctx, id, "elegir");
+  const q = activa(ctx, canal, id, "elegir");
   if (!q) return;
   q.historia = historia;
   q.fin = Date.now() + SEG.elegir * 1000 * ESCALA;
   guardar(ctx, q);
   q.msg = await ctx.post(q.canal, msgHistoria(q));
   guardar(ctx, q);
-  cuentaAtras(ctx, id, "elegir", msgHistoria, () => revelar(ctx, id));
+  cuentaAtras(ctx, canal, id, "elegir", msgHistoria, () => revelar(ctx, canal, id));
 }
 
 function elegir(input: Input, ctx: Ctx, id: string, carta: number): Output {
-  const p = leer(ctx);
+  const p = leer(ctx, input.channel);
   if (!p || p.id !== id) return privado("Esa partida ya no existe.");
   if (p.fase === "unirse" || (p.fase === "elegir" && !p.historia)) return privado("✋ Espera a que cuente la historia.");
   if (p.fase !== "elegir") return privado("⌛ Ya no se pueden elegir cartas.");
@@ -216,12 +218,12 @@ function elegir(input: Input, ctx: Ctx, id: string, carta: number): Output {
   p.elegidas[input.user] = carta;
   guardar(ctx, p);
   if (p.msg) enSegundoPlano(() => ctx.update(p.canal, p.msg!, msgHistoria(p)));
-  if (Object.keys(p.elegidas).length === jugadores(p).length) enSegundoPlano(() => revelar(ctx, id));
+  if (Object.keys(p.elegidas).length === jugadores(p).length) enSegundoPlano(() => revelar(ctx, p.canal, id));
   return { private: true, replace: true, text: `✅ Has elegido esta carta para «${p.historia}». ¡Ahora a esperar la votación!`, images: [img(carta)] };
 }
 
-async function revelar(ctx: Ctx, id: string) {
-  const p = activa(ctx, id, "elegir");
+async function revelar(ctx: Ctx, canal: string, id: string) {
+  const p = activa(ctx, canal, id, "elegir");
   if (!p) return;
   clearInterval(relojes.get(id));
   const quienes = Object.keys(p.elegidas);
@@ -245,11 +247,11 @@ async function revelar(ctx: Ctx, id: string) {
   });
   p.msg = await ctx.post(p.canal, msgVotar(p));
   guardar(ctx, p);
-  cuentaAtras(ctx, id, "votar", msgVotar, () => resultados(ctx, id));
+  cuentaAtras(ctx, canal, id, "votar", msgVotar, () => resultados(ctx, canal, id));
 }
 
 function votar(input: Input, ctx: Ctx, id: string, i: number): Output {
-  const p = leer(ctx);
+  const p = leer(ctx, input.channel);
   if (!p || p.id !== id || p.fase !== "votar") return privado("⌛ La votación ya está cerrada.");
   if (!p.manos[input.user]) return privado("👀 Solo votan quienes juegan. ¡Apúntate a la siguiente!");
   if (!(i in p.orden)) return privado("Esa carta no existe 🤨");
@@ -258,12 +260,12 @@ function votar(input: Input, ctx: Ctx, id: string, i: number): Output {
   p.votos[input.user] = i;
   guardar(ctx, p);
   if (p.msg) enSegundoPlano(() => ctx.update(p.canal, p.msg!, msgVotar(p)));
-  if (Object.keys(p.votos).length === jugadores(p).length) enSegundoPlano(() => resultados(ctx, id));
+  if (Object.keys(p.votos).length === jugadores(p).length) enSegundoPlano(() => resultados(ctx, p.canal, id));
   return privado(`🗳️ Voto secreto guardado: *${LETRAS[i]}*. Puedes cambiarlo mientras dure la votación.`);
 }
 
-async function resultados(ctx: Ctx, id: string) {
-  const p = activa(ctx, id, "votar");
+async function resultados(ctx: Ctx, canal: string, id: string) {
+  const p = activa(ctx, canal, id, "votar");
   if (!p) return;
   clearInterval(relojes.get(id));
   p.fase = "fin";
@@ -346,8 +348,8 @@ function textoRanking(ranking: Ranking) {
 }
 
 function parar(input: Input, ctx: Ctx): Output {
-  const p = leer(ctx);
-  if (!p || p.fase === "fin") return privado("No hay ninguna partida en marcha.");
+  const p = leer(ctx, input.channel);
+  if (!p || p.fase === "fin") return privado("No hay ninguna partida en marcha en este canal.");
   p.fase = "fin";
   guardar(ctx, p);
   clearInterval(relojes.get(p.id));
