@@ -204,11 +204,16 @@ const RIP = S("rip", ["##..#.##.", "#.#.#.#.#", "##..#.##.", "#.#.#.#..", "#.#.#
 const FANTASMA = S("fantasma", [".ooo.", "o#o#o", "ooooo", "ooooo", "o.o.o"]);
 
 const COMIDA = [
-  S("comida0", ["..#..", ".###.", "#####", "#####", ".###."]),
-  S("comida1", ["..#..", ".###.", "###..", "####.", ".###."]),
-  S("comida2", ["..#..", ".#...", "##...", "##...", ".#..."]),
-  S("comida3", [".....", ".....", ".....", ".....", "....."]),
+  S("comida0", ["..###..", ".#####.", ".#####.", "..###..", "...#...", "..#.#.."]),
+  S("comida1", ["..##...", ".###...", ".####..", "..###..", "...#...", "..#.#.."]),
+  S("comida2", ["..#....", ".#.....", ".##....", "..##...", "...#...", "..#.#.."]),
+  S("comida3", [".......", ".......", ".......", "...o...", "...#...", "..#.#.."]),
 ];
+const MIGAS = S("migas", ["o.o", ".o.", "o.."]);
+const PATITO = S("patito", [".##....", "###o...", ".##..#.", "######.", ".####.."]);
+const GOTA = S("gota", ["o", "o"]);
+const MANO = S("mano", ["..ooo..", ".ooooo.", "ooooooo", "o.o.o.o", "o.o.o.o"]);
+const MINI_CORAZON = S("mini-corazon", ["#.#", "###", ".#."]);
 const PELOTA = S("pelota", [".##.", "#o##", "##o#", ".##."]);
 const BURBUJA = S("burbuja", [".o.", "o.o", ".o."]);
 const ZETA = S("zeta", ["####", "..#.", ".#..", "####"]);
@@ -228,7 +233,8 @@ const ICONOS = [
   S("icono-dormir", [".###.", "##...", "#....", "##...", ".###."]),
 ];
 
-const MASCOTAS: Record<string, Sprite> = { cria: CRIA, adolescente: ADOLESCENTE, adulta: ADULTA, leyenda: LEYENDA };
+// El reposo de la semilla (huevo) es especial: lo sobrescribe "huevo-reposo" en especiales()
+const MASCOTAS: Record<string, Sprite> = { huevo: HUEVO, cria: CRIA, adolescente: ADOLESCENTE, adulta: ADULTA, leyenda: LEYENDA };
 
 // ── Composición de un fotograma ──────────────────────────────
 
@@ -408,6 +414,8 @@ function brillos(i: number): Capa[] {
 
 type Animacion = (m: Sprite) => Fotograma[];
 
+const cabeza = (m: Sprite) => m.findIndex((fila) => fila.trim().replace(/\./g, "") !== "");
+
 const ANIMACIONES: Record<string, Animacion> = {
   reposo: (m) => [
     { mascota: m, dy: 0, corazones: 4 },
@@ -427,30 +435,58 @@ const ANIMACIONES: Record<string, Animacion> = {
     { mascota: m, dx: 1, dy: 1, corazones: "calavera", ms: 300 },
     { corazones: "calavera", ms: 200 },
   ],
+  // Se acerca a la comida en cada mordisco y caen migas
   comer: (m) =>
     COMIDA.map((comida, i) => ({
       mascota: m,
-      dy: i % 2 ? -1 : 0,
+      dx: i % 2 ? 1 : 0,
       icono: 0,
       corazones: i === 3 ? 4 : 3,
-      capas: [{ sprite: comida, x: M.x + 17, y: M.y + 9 }],
-    })),
-  jugar: (m) => [
-    { mascota: m, dy: 0, icono: 1, corazones: 3, capas: [{ sprite: PELOTA, x: M.x - 6, y: M.y + 10 }], ms: 300 },
-    { mascota: m, dy: -2, icono: 1, corazones: 3, capas: [{ sprite: PELOTA, x: M.x - 5, y: M.y + 4 }], ms: 300 },
-    { mascota: m, dy: 0, icono: 1, corazones: 4, capas: [{ sprite: PELOTA, x: M.x - 6, y: M.y + 10 }], ms: 300 },
-    { mascota: m, dy: -2, icono: 1, corazones: 4, capas: [{ sprite: PELOTA, x: M.x - 5, y: M.y + 2 }], ms: 300 },
-  ],
-  banar: (m) =>
-    [0, 1, 2].map((i) => ({
-      mascota: m,
-      dx: i === 1 ? 1 : 0,
-      icono: 2,
-      corazones: i === 2 ? 4 : 3,
       capas: [
-        { sprite: BURBUJA, x: M.x - 4, y: M.y + 12 - i * 4 },
-        { sprite: BURBUJA, x: M.x + 17, y: M.y + 8 - i * 3 },
-        { sprite: BURBUJA, x: M.x + 7, y: M.y + 3 - i * 2 },
+        { sprite: comida, x: M.x + 16, y: M.y + 8 },
+        ...(i > 0 ? [{ sprite: MIGAS, x: M.x + 15, y: M.y + 14 }] : []),
+      ],
+    })),
+  // La pelota describe un arco por encima y la mascota salta para alcanzarla
+  jugar: (m) =>
+    [
+      { bx: M.x - 6, by: M.y + 10, dy: 0 },
+      { bx: M.x - 2, by: M.y - 1, dy: -2 },
+      { bx: M.x + 14, by: M.y - 1, dy: -2 },
+      { bx: M.x + 18, by: M.y + 10, dy: 0 },
+    ].map((p, i) => ({
+      mascota: m,
+      dy: p.dy,
+      icono: 1,
+      corazones: i < 2 ? 3 : 4,
+      ms: 300,
+      capas: [{ sprite: PELOTA, x: p.bx, y: p.by }],
+    })),
+  // Ducha de gotas, burbujas que suben y un patito que se balancea
+  banar: (m) =>
+    [0, 1, 2, 3].map((i) => ({
+      mascota: m,
+      dx: i % 2,
+      icono: 2,
+      corazones: i < 2 ? 3 : 4,
+      ms: 300,
+      capas: [
+        ...[1, 5, 10, 14].map((x, k) => ({ sprite: GOTA, x: M.x + x, y: M.y - 1 + ((i * 3 + k * 5) % 9) })),
+        { sprite: BURBUJA, x: M.x - 4, y: M.y + 12 - i * 3 },
+        { sprite: BURBUJA, x: M.x + 17, y: M.y + 9 - i * 2 },
+        { sprite: PATITO, x: M.x - 6, y: M.y + 11 - (i % 2) },
+      ],
+    })),
+  // Una mano le acaricia la cabeza y van saliendo corazones
+  acariciar: (m) =>
+    [0, 1, 2, 3].map((i) => ({
+      mascota: m,
+      dy: i % 2,
+      corazones: i < 2 ? 3 : 4,
+      capas: [
+        { sprite: MANO, x: M.x + 4, y: M.y + cabeza(m) - (i % 2 ? 4 : 6) },
+        { sprite: MINI_CORAZON, x: M.x + 15, y: M.y + 8 - i * 2 },
+        ...(i > 1 ? [{ sprite: MINI_CORAZON, x: M.x - 3, y: M.y + 10 - (i - 2) * 3 }] : []),
       ],
     })),
   dormir: (m) =>
